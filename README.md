@@ -1,2 +1,2 @@
 # dijkstra-lan-optimization
-Dijkstra's algorithm for content delivery optimization in LANs.
+Dijkstra's algorithm for content delivery optimization in LANs (source code only).
