@@ -1,3 +1,6 @@
+using FastHashTable;
+using Graph;
+
 namespace dlo_winform;
 
 public static class SampleGraphs
@@ -18,7 +21,7 @@ public static class SampleGraphs
         "MeshWeb 76",
         "Lattice 88"
     };
-    private static void NormalizeCoordinates(GraphData data)
+    public static void NormalizeCoordinates(GraphData data, int canvasWidth, int canvasHeight)
     {
         if (data.nodeList.Count == 0) return;
 
@@ -35,14 +38,16 @@ public static class SampleGraphs
         float h = maxY - minY;
         if (w == 0f) w = 1f;
         if (h == 0f) h = 1f;
-        float targetW = 480f;
-        float targetH = 260f;
+        float targetW = canvasWidth * 0.9f;
+        float targetH = canvasHeight * 0.9f;
         float scale = targetW / w < targetH / h ? targetW / w : targetH / h;
         if (scale > 1.2f) scale = 1.2f;
+
         float cx = (minX + maxX) / 2f;
         float cy = (minY + maxY) / 2f;
-        float targetCx = 270f;
-        float targetCy = 150f;
+        float targetCx = canvasWidth / 2f;
+        float targetCy = canvasHeight / 2f;
+
         foreach (NetworkNode node in data.nodeList)
         {
             float nx = (node.Position.X - cx) * scale + targetCx;
@@ -50,7 +55,7 @@ public static class SampleGraphs
             node.Position = new PointF(nx, ny);
         }
     }
-    public static GraphData CreateAt(int index)
+    public static GraphData CreateAt(int index, int canvasWidth, int canvasHeight)
     {
         GraphData data = index switch
         {
@@ -69,7 +74,7 @@ public static class SampleGraphs
             12 => Lattice88(),
             _ => EmptyGraph()
         };
-        NormalizeCoordinates(data);
+        NormalizeCoordinates(data, canvasWidth, canvasHeight);
         return data;
     }
 
@@ -332,6 +337,64 @@ public static class SampleGraphs
                 if (c > 0 && r > 0 && (r + c) % 3 == 0) AddEdge(data, i, i - cols - 2);
                 if (c + 1 < cols && r > 0 && (r + c) % 2 == 0) AddEdge(data, i, i - cols + 1);
             }
+        return data;
+    }
+    public static GraphData GenerateMassiveGraph(int nodeCount, int edgeCount, int canvasWidth, int canvasHeight)
+    {
+        GraphData data = new GraphData();
+        Random rng = new Random();
+        float cx = canvasWidth / 2f;
+        float cy = canvasHeight / 2f;
+        float radiusX = canvasWidth * 0.45f;
+        float radiusY = canvasHeight * 0.45f;
+        for (int i = 1; i <= nodeCount; i++)
+        {
+            float x, y;
+            if (nodeCount <= 100)
+            {
+                double angle = 2 * Math.PI * i / nodeCount;
+                x = (float)(cx + radiusX * Math.Cos(angle));
+                y = (float)(cy + radiusY * Math.Sin(angle));
+            }
+            else
+            {
+                x = rng.Next((int)(cx - radiusX), (int)(cx + radiusX));
+                y = rng.Next((int)(cy - radiusY), (int)(cy + radiusY));
+            }
+
+            data.nodeList.Add(new NetworkNode
+            {
+                Id = i,
+                Position = new PointF(x, y),
+                Radius = nodeCount > 1000 ? 1 : 10
+            });
+        }
+
+        MyHashTable ht = new FastHashTable.MyHashTable();
+        int count = 0;
+        long nPlus1 = (long)nodeCount + 1;
+        for (int i = 0; i < nodeCount - 1 && count < edgeCount; i++)
+        {
+            AddWeightedEdge(data, i, i + 1, rng);
+            ht.Add(1L * i * nPlus1 + (i + 1));
+            count++;
+        }
+        while (count < edgeCount)
+        {
+            int u = rng.Next(0, nodeCount);
+            int v = rng.Next(0, nodeCount);
+            if (u == v) continue;
+            int min = u < v ? u : v;
+            int max = u > v ? u : v;
+
+            long key = 1L * min * nPlus1 + max;
+            if (ht.Add(key))
+            {
+                AddWeightedEdge(data, min, max, rng);
+                count++;
+            }
+        }
+
         return data;
     }
 }

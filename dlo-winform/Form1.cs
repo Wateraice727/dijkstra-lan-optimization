@@ -9,28 +9,34 @@ public partial class Form1 : Form
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public GraphData GD = null!;
     private System.Windows.Forms.Timer animationTimer = null!;
-    private DijkstraRouteResult? currentRoute;
-    private PacketSimulation? currentSimulation;
+    private DijkstraRouteResult currentRoute;
+    private PacketSimulation currentSimulation;
     private bool isPaused = false;
     private bool isAddNodeMode = false;
     private bool isRemoveNodeMode = false;
-    private NetworkEdge? editingEdge = null;
+    private NetworkEdge editingEdge = null;
     private double lastCalcMs;
     private bool loadingSampleList = true;
-
+    private readonly Font defaultFont, boldFont;
+    private readonly Pen edgePen, pathPen;
     public Form1()
     {
         InitializeComponent();
+        defaultFont = SystemFonts.DefaultFont;
+        boldFont = new Font(SystemFonts.DefaultFont.FontFamily, SystemFonts.DefaultFont.Size, FontStyle.Bold);
+        edgePen = new Pen(Color.Black, 2);
+        pathPen = new Pen(Color.DodgerBlue, 3);
         pbxCanvas.Paint += pbxCanvas_Paint;
         pbxCanvas.MouseDown += pbxCanvas_MouseDown;
         pbxCanvas.MouseMove += pbxCanvas_MouseMove;
         pbxCanvas.MouseUp += pbxCanvas_MouseUp;
         pbxCanvas.MouseDoubleClick += pbxCanvas_MouseDoubleClick;
+        btnGenerate.Click += btnGenerate_Click;
 
         if (!DesignMode)
         {
             this.DoubleBuffered = true;
-            GD = SampleGraphs.CreateAt(0);
+            GD = SampleGraphs.CreateAt(0, pbxCanvas.Width, pbxCanvas.Height);
             cmbSampleGraphs.Items.AddRange(SampleGraphs.Names.ToArray());
             cmbSampleGraphs.SelectedIndex = 0;
             loadingSampleList = false;
@@ -40,8 +46,36 @@ public partial class Form1 : Form
             animationTimer.Tick += AnimationTimer_Tick;
         }
     }
+    private void btnGenerate_Click(object sender, EventArgs e)
+    {
+        if (!int.TryParse(txtGenNodes.Text, out int n) || n <= 0)
+        {
+            MessageBox.Show("Please enter a valid positive nodes number.", "Input Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        if (!int.TryParse(txtGenEdges.Text, out int m) || m < 0)
+        {
+            MessageBox.Show("Please enter a valid positive edges number.", "Input Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
 
-    private void cmbSampleGraphs_SelectedIndexChanged(object? sender, EventArgs e)
+        long maxEdges = 1L * n * (n - 1) / 2;
+        if (m > maxEdges) m = (int)maxEdges;
+
+        GD = SampleGraphs.GenerateMassiveGraph(n, m, pbxCanvas.Width, pbxCanvas.Height);
+        foreach (NetworkEdge edge in GD.edgeList)
+        {
+            if (edge.TransferSpeedBytesPerSecond == 0)
+                edge.TransferSpeedBytesPerSecond = GraphEditor.GenerateTransferSpeed();
+        }
+        currentRoute = null;
+        currentSimulation = null;
+        animationTimer.Stop();
+        txtLog.Clear();
+
+        pbxCanvas.Invalidate();
+    }
+    private void cmbSampleGraphs_SelectedIndexChanged(object sender, EventArgs e)
     {
         if (loadingSampleList) return;
         LoadSampleGraph(cmbSampleGraphs.SelectedIndex);
@@ -98,7 +132,7 @@ public partial class Form1 : Form
         animationTimer.Start();
     }
 
-    private void AnimationTimer_Tick(object? sender, EventArgs e)
+    private void AnimationTimer_Tick(object sender, EventArgs e)
     {
         if (currentSimulation == null || isPaused) return;
 
@@ -133,62 +167,105 @@ public partial class Form1 : Form
         button4.Text = isPaused ? "Resume" : "Pause";
     }
 
-    private readonly Font defaultFont = SystemFonts.DefaultFont;
-    private readonly Font boldFont = new Font(SystemFonts.DefaultFont.FontFamily, SystemFonts.DefaultFont.Size, FontStyle.Bold);
-    private readonly Pen edgePen = new Pen(Color.Black, 2), pathPen = new Pen(Color.DodgerBlue, 3);
     private void pbxCanvas_Paint(object sender, PaintEventArgs e)
     {
         if (GD == null) return;
         Graphics g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        
-        foreach (NetworkEdge edge in GD.edgeList)
-        {
-            bool isInPath = currentRoute != null && currentRoute.PathEdges.Contains(edge);
-            Pen pen = isInPath ? pathPen : edgePen;
-            g.DrawLine(pen, edge.StartNode.Position.X, edge.StartNode.Position.Y, edge.EndNode.Position.X, edge.EndNode.Position.Y);
+        bool isMassive = GD.nodeList.Count >= 1000 || GD.edgeList.Count >= 2000;
 
-            PointF midPoint = new PointF(
-                (edge.StartNode.Position.X + edge.EndNode.Position.X) / 2,
-                (edge.StartNode.Position.Y + edge.EndNode.Position.Y) / 2);
-            string speedText = GraphEditor.SpeedToMbpsString(edge.TransferSpeedBytesPerSecond);
-            g.DrawString(speedText, defaultFont, Brushes.Black, midPoint);
+        if (isMassive)
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighSpeed;
+            using (Pen thinEdgePen = new Pen(Color.LightGray, 1))
+            {
+                foreach (NetworkEdge edge in GD.edgeList)
+                {
+                    g.DrawLine(thinEdgePen, edge.StartNode.Position.X, edge.StartNode.Position.Y, edge.EndNode.Position.X, edge.EndNode.Position.Y);
+                }
+            }
+            if (currentRoute != null)
+            {
+                foreach (NetworkEdge edge in currentRoute.PathEdges)
+                {
+                    g.DrawLine(pathPen, edge.StartNode.Position.X, edge.StartNode.Position.Y, edge.EndNode.Position.X, edge.EndNode.Position.Y);
+                }
+            }
+
+            if (currentSimulation != null && currentRoute != null && currentSimulation.CurrentEdgeIndex >= 0 && currentSimulation.CurrentEdgeIndex < currentRoute.PathEdges.Count)
+            {
+                NetworkEdge edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
+                PointF start = edge.StartNode.Position;
+                PointF end = edge.EndNode.Position;
+                float packetX = (start.X + end.X) / 2;
+                float packetY = (start.Y + end.Y) / 2;
+                g.FillEllipse(Brushes.Red, packetX - 5, packetY - 5, 10, 10);
+            }
+
+            foreach (NetworkNode node in GD.nodeList)
+            {
+                Brush nodeBrush = Brushes.Blue;
+                if (currentRoute != null && node.Id == currentRoute.StartNodeId) nodeBrush = Brushes.Green;
+                else if (currentRoute != null && node.Id == currentRoute.DestinationNodeId) nodeBrush = Brushes.Orange;
+
+                g.FillRectangle(nodeBrush, node.Position.X - 1, node.Position.Y - 1, 2, 2);
+            }
         }
-
-        if (currentSimulation != null && currentRoute != null && currentSimulation.CurrentEdgeIndex >= 0 && currentSimulation.CurrentEdgeIndex < currentRoute.PathEdges.Count)
+        else
         {
-            NetworkEdge edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
-            PointF start = edge.StartNode.Position;
-            PointF end = edge.EndNode.Position;
-            float packetX = (start.X + end.X) / 2;
-            float packetY = (start.Y + end.Y) / 2;
-            g.FillEllipse(Brushes.Red, packetX - 5, packetY - 5, 10, 10);
-        }
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            foreach (NetworkEdge edge in GD.edgeList)
+            {
+                g.DrawLine(edgePen, edge.StartNode.Position.X, edge.StartNode.Position.Y, edge.EndNode.Position.X, edge.EndNode.Position.Y);
 
-        foreach (NetworkNode node in GD.nodeList)
-        {
-            float x = node.Position.X - node.Radius;
-            float y = node.Position.Y - node.Radius;
-            float diameter = node.Radius * 2;
-            Brush nodeBrush = Brushes.LightBlue;
+                PointF midPoint = new PointF(
+                    (edge.StartNode.Position.X + edge.EndNode.Position.X) / 2,
+                    (edge.StartNode.Position.Y + edge.EndNode.Position.Y) / 2);
+                string speedText = GraphEditor.SpeedToMbpsString(edge.TransferSpeedBytesPerSecond);
+                g.DrawString(speedText, defaultFont, Brushes.Black, midPoint);
+            }
+            if (currentRoute != null)
+            {
+                foreach (NetworkEdge edge in currentRoute.PathEdges)
+                {
+                    g.DrawLine(pathPen, edge.StartNode.Position.X, edge.StartNode.Position.Y, edge.EndNode.Position.X, edge.EndNode.Position.Y);
+                }
+            }
 
-            if (currentRoute != null && node.Id == currentRoute.StartNodeId)
-                nodeBrush = Brushes.Green;
-            else if (currentRoute != null && node.Id == currentRoute.DestinationNodeId)
-                nodeBrush = Brushes.Orange;
+            if (currentSimulation != null && currentRoute != null && currentSimulation.CurrentEdgeIndex >= 0 && currentSimulation.CurrentEdgeIndex < currentRoute.PathEdges.Count)
+            {
+                NetworkEdge edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
+                PointF start = edge.StartNode.Position;
+                PointF end = edge.EndNode.Position;
+                float packetX = (start.X + end.X) / 2;
+                float packetY = (start.Y + end.Y) / 2;
+                g.FillEllipse(Brushes.Red, packetX - 5, packetY - 5, 10, 10);
+            }
 
-            g.FillEllipse(nodeBrush, x, y, diameter, diameter);
-            g.DrawEllipse(Pens.DarkBlue, x, y, diameter, diameter);
+            foreach (NetworkNode node in GD.nodeList)
+            {
+                float x = node.Position.X - node.Radius;
+                float y = node.Position.Y - node.Radius;
+                float diameter = node.Radius * 2;
+                Brush nodeBrush = Brushes.LightBlue;
 
-            string idText = node.Id.ToString();
-            SizeF textSize = g.MeasureString(idText, boldFont);
-            float textX = node.Position.X - textSize.Width / 2;
-            float textY = node.Position.Y - textSize.Height / 2;
-            g.DrawString(idText, boldFont, Brushes.Black, textX, textY);
+                if (currentRoute != null && node.Id == currentRoute.StartNodeId)
+                    nodeBrush = Brushes.Green;
+                else if (currentRoute != null && node.Id == currentRoute.DestinationNodeId)
+                    nodeBrush = Brushes.Orange;
+
+                g.FillEllipse(nodeBrush, x, y, diameter, diameter);
+                g.DrawEllipse(Pens.DarkBlue, x, y, diameter, diameter);
+
+                string idText = node.Id.ToString();
+                SizeF textSize = g.MeasureString(idText, boldFont);
+                float textX = node.Position.X - textSize.Width / 2;
+                float textY = node.Position.Y - textSize.Height / 2;
+                g.DrawString(idText, boldFont, Brushes.Black, textX, textY);
+            }
         }
     }
 
-    private void pbxCanvas_MouseDown(object? sender, MouseEventArgs e)
+    private void pbxCanvas_MouseDown(object sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
 
@@ -248,11 +325,11 @@ public partial class Form1 : Form
     {
     }
 
-    private void pbxCanvas_MouseMove(object? sender, MouseEventArgs e)
+    private void pbxCanvas_MouseMove(object sender, MouseEventArgs e)
     {
     }
 
-    private void pbxCanvas_MouseUp(object? sender, MouseEventArgs e)
+    private void pbxCanvas_MouseUp(object sender, MouseEventArgs e)
     {
         if (checkBox1.Checked && pbxCanvas.Tag is NetworkNode startNode && e.Button == MouseButtons.Left)
         {
@@ -298,7 +375,7 @@ public partial class Form1 : Form
         Log("Click on the canvas to remove a node.");
     }
 
-    private void checkBoxEditWeight_CheckedChanged(object? sender, EventArgs e)
+    private void checkBoxEditWeight_CheckedChanged(object sender, EventArgs e)
     {
         if (checkBoxEditWeight.Checked && checkBox1.Checked)
             checkBox1.Checked = false;
@@ -324,7 +401,8 @@ public partial class Form1 : Form
 
     private void LoadSampleGraph(int index)
     {
-        GD = SampleGraphs.CreateAt(index);
+
+        GD = SampleGraphs.CreateAt(index, pbxCanvas.Width, pbxCanvas.Height);
         foreach (NetworkEdge edge in GD.edgeList)
         {
             if (edge.TransferSpeedBytesPerSecond == 0)
@@ -382,11 +460,11 @@ public partial class Form1 : Form
     private void groupBox3_Enter(object sender, EventArgs e) { }
     private void Form1_Load(object sender, EventArgs e) { }
 
-    private void pbxCanvas_MouseDoubleClick(object? sender, MouseEventArgs e)
+    private void pbxCanvas_MouseDoubleClick(object sender, MouseEventArgs e)
     {
     }
 
-    private void txtEdgeWeightEditor_KeyPress(object? sender, KeyPressEventArgs e)
+    private void txtEdgeWeightEditor_KeyPress(object sender, KeyPressEventArgs e)
     {
         if (e.KeyChar == (char)Keys.Enter)
         {
@@ -401,7 +479,7 @@ public partial class Form1 : Form
         }
     }
 
-    private void txtEdgeWeightEditor_LostFocus(object? sender, EventArgs e)
+    private void txtEdgeWeightEditor_LostFocus(object sender, EventArgs e)
     {
         if (!txtEdgeWeightEditor.Visible || editingEdge == null) return;
 
@@ -413,5 +491,30 @@ public partial class Form1 : Form
 
         txtEdgeWeightEditor.Visible = false;
         editingEdge = null;
+    }
+
+    private void txtEdgeWeightEditor_TextChanged(object sender, EventArgs e)
+    {
+
+    }
+
+    private void groupBox5_Enter(object sender, EventArgs e)
+    {
+
+    }
+
+    private void label1_Click(object sender, EventArgs e)
+    {
+
+    }
+
+    private void label2_Click(object sender, EventArgs e)
+    {
+
+    }
+
+    private void textBox1_TextChanged(object sender, EventArgs e)
+    {
+
     }
 }
