@@ -1,7 +1,5 @@
 using System.ComponentModel;
-using System.Drawing;
 using System.Diagnostics;
-using Graph;
 
 namespace dlo_winform;
 
@@ -70,8 +68,7 @@ public partial class Form1 : Form
             return;
         }
 
-        var startNode = GD.GetNodeById(startId);
-        var destNode = GD.GetNodeById(destId);
+        NetworkNode startNode = GD.GetNodeById(startId), destNode = GD.GetNodeById(destId);
 
         if (startNode == null || destNode == null)
         {
@@ -81,7 +78,7 @@ public partial class Form1 : Form
 
         GraphEditor.RecalculateEdgeWeights(GD, packetBytes);
 
-        var sw = Stopwatch.StartNew();
+        Stopwatch sw = Stopwatch.StartNew();
         currentRoute = DijkstraGraphService.FindRoute(GD, startId, destId);
         sw.Stop();
         lastCalcMs = sw.Elapsed.TotalMilliseconds;
@@ -105,7 +102,7 @@ public partial class Form1 : Form
     {
         if (currentSimulation == null || isPaused) return;
 
-        var tick = currentSimulation.Tick();
+        PacketTickResult tick = currentSimulation.Tick();
 
         if (tick.IsComplete)
         {
@@ -114,7 +111,7 @@ public partial class Form1 : Form
         }
         else if (tick.IsMove && currentRoute != null && currentSimulation.CurrentEdgeIndex < currentRoute.PathEdges.Count)
         {
-            var edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
+            NetworkEdge edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
             string speedStr = GraphEditor.SpeedToMbpsString(edge.TransferSpeedBytesPerSecond);
             Log(tick.FromNodeId + " -> " + tick.ToNodeId + ", speed: " + speedStr + ", transfer time: " + tick.TickTravelTime + " ms");
         }
@@ -136,20 +133,18 @@ public partial class Form1 : Form
         button4.Text = isPaused ? "Resume" : "Pause";
     }
 
-    private void pbxCanvas_Paint(object? sender, PaintEventArgs e)
+    private readonly Font defaultFont = SystemFonts.DefaultFont;
+    private readonly Font boldFont = new Font(SystemFonts.DefaultFont.FontFamily, SystemFonts.DefaultFont.Size, FontStyle.Bold);
+    private readonly Pen edgePen = new Pen(Color.Black, 2), pathPen = new Pen(Color.DodgerBlue, 3);
+    private void pbxCanvas_Paint(object sender, PaintEventArgs e)
     {
         if (GD == null) return;
         Graphics g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        Font defaultFont = SystemFonts.DefaultFont;
-        Font boldFont = new Font(defaultFont.FontFamily, defaultFont.Size, FontStyle.Bold);
-
-        Pen edgePen = new Pen(Color.Black, 2);
-        Pen pathPen = new Pen(Color.DodgerBlue, 3);
-
+        
         foreach (NetworkEdge edge in GD.edgeList)
         {
-            bool isInPath = currentRoute?.PathEdges.Contains(edge) == true;
+            bool isInPath = currentRoute != null && currentRoute.PathEdges.Contains(edge);
             Pen pen = isInPath ? pathPen : edgePen;
             g.DrawLine(pen, edge.StartNode.Position.X, edge.StartNode.Position.Y, edge.EndNode.Position.X, edge.EndNode.Position.Y);
 
@@ -162,7 +157,7 @@ public partial class Form1 : Form
 
         if (currentSimulation != null && currentRoute != null && currentSimulation.CurrentEdgeIndex >= 0 && currentSimulation.CurrentEdgeIndex < currentRoute.PathEdges.Count)
         {
-            var edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
+            NetworkEdge edge = currentRoute.PathEdges[currentSimulation.CurrentEdgeIndex];
             PointF start = edge.StartNode.Position;
             PointF end = edge.EndNode.Position;
             float packetX = (start.X + end.X) / 2;
@@ -191,10 +186,6 @@ public partial class Form1 : Form
             float textY = node.Position.Y - textSize.Height / 2;
             g.DrawString(idText, boldFont, Brushes.Black, textX, textY);
         }
-
-        edgePen.Dispose();
-        pathPen.Dispose();
-        boldFont.Dispose();
     }
 
     private void pbxCanvas_MouseDown(object? sender, MouseEventArgs e)
@@ -203,7 +194,7 @@ public partial class Form1 : Form
 
         if (isAddNodeMode)
         {
-            var node = GraphEditor.AddNode(GD, e.Location);
+            NetworkNode node = GraphEditor.AddNode(GD, e.Location);
             pbxCanvas.Invalidate();
             Log("Added node " + node.Id + " at (" + e.Location.X + ", " + e.Location.Y + ")");
             isAddNodeMode = false;
@@ -212,10 +203,10 @@ public partial class Form1 : Form
 
         if (isRemoveNodeMode)
         {
-            var (nodeRemoved, removedCount, removedEdges) = GraphEditor.RemoveNode(GD, e.Location);
+            (bool nodeRemoved, int removedCount, List<NetworkEdge> removedEdges) = GraphEditor.RemoveNode(GD, e.Location);
             if (nodeRemoved)
             {
-                foreach (var edge in removedEdges)
+                foreach (NetworkEdge edge in removedEdges)
                 {
                     string speedStr = GraphEditor.SpeedToMbpsString(edge.TransferSpeedBytesPerSecond);
                     Log("Edge removed: " + edge.StartNode.Id + " <-> " + edge.EndNode.Id + ", speed: " + speedStr);
@@ -231,7 +222,7 @@ public partial class Form1 : Form
 
         if (checkBoxEditWeight.Checked)
         {
-            var edge = GraphEditor.TryGetEdgeNearPoint(GD, e.Location, 6f);
+            NetworkEdge edge = GraphEditor.TryGetEdgeNearPoint(GD, e.Location, 6f);
             if (edge != null)
             {
                 int? newWeight = PromptForWeight(edge.Weight);
@@ -247,7 +238,7 @@ public partial class Form1 : Form
 
         if (checkBox1.Checked)
         {
-            var node = GD.GetNode(e.Location);
+            NetworkNode node = GD.GetNode(e.Location);
             if (node != null)
                 pbxCanvas.Tag = node;
         }
@@ -268,8 +259,8 @@ public partial class Form1 : Form
             var endNode = GD.GetNode(e.Location);
             if (endNode != null && startNode != endNode)
             {
-                var outcome = GraphEditor.ToggleEdge(GD, startNode, endNode);
-                var edge = GD.edgeList.FirstOrDefault(ed =>
+                ToggleEdgeOutcome outcome = GraphEditor.ToggleEdge(GD, startNode, endNode);
+                NetworkEdge edge = GD.edgeList.FirstOrDefault(ed =>
                     (ed.StartNode == startNode && ed.EndNode == endNode) ||
                     (ed.StartNode == endNode && ed.EndNode == startNode));
                 if (outcome == ToggleEdgeOutcome.Created && edge != null)
@@ -334,7 +325,7 @@ public partial class Form1 : Form
     private void LoadSampleGraph(int index)
     {
         GD = SampleGraphs.CreateAt(index);
-        foreach (var edge in GD.edgeList)
+        foreach (NetworkEdge edge in GD.edgeList)
         {
             if (edge.TransferSpeedBytesPerSecond == 0)
                 edge.TransferSpeedBytesPerSecond = GraphEditor.GenerateTransferSpeed();
@@ -356,10 +347,10 @@ public partial class Form1 : Form
         form.StartPosition = FormStartPosition.CenterParent;
         form.ShowInTaskbar = false;
 
-        var label = new Label { Text = "New weight:", Location = new Point(12, 20), Size = new Size(80, 25) };
-        var textBox = new TextBox { Location = new Point(100, 20), Size = new Size(140, 27), Text = currentWeight.ToString() };
-        var ok = new Button { Text = "OK", Location = new Point(50, 70), Size = new Size(75, 30), DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Cancel", Location = new Point(135, 70), Size = new Size(75, 30), DialogResult = DialogResult.Cancel };
+        Label label = new Label { Text = "New weight:", Location = new Point(12, 20), Size = new Size(80, 25) };
+        TextBox textBox = new TextBox { Location = new Point(100, 20), Size = new Size(140, 27), Text = currentWeight.ToString() };
+        Button ok = new Button { Text = "OK", Location = new Point(50, 70), Size = new Size(75, 30), DialogResult = DialogResult.OK };
+        Button cancel = new Button { Text = "Cancel", Location = new Point(135, 70), Size = new Size(75, 30), DialogResult = DialogResult.Cancel };
 
         form.Controls.Add(label);
         form.Controls.Add(textBox);

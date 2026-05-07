@@ -1,13 +1,13 @@
 namespace dlo_winform;
 
-public sealed class PacketTickResult
+public readonly struct PacketTickResult
 {
-    public bool IsMove { get; }
-    public bool IsComplete { get; }
-    public int FromNodeId { get; }
-    public int ToNodeId { get; }
-    public long TickTravelTime { get; }
-    public long TotalElapsedTime { get; }
+    public readonly bool IsMove { get; }
+    public readonly bool IsComplete { get; }
+    public readonly int FromNodeId { get; }
+    public readonly int ToNodeId { get; }
+    public readonly long TickTravelTime { get; }
+    public readonly long TotalElapsedTime { get; }
 
     private PacketTickResult(bool isMove, bool isComplete, int fromNodeId, int toNodeId, long tickTravelTime, long totalElapsedTime)
     {
@@ -32,25 +32,25 @@ public sealed class PacketTickResult
 
 public sealed class PacketSimulation
 {
-    public DijkstraRouteResult Route { get; }
-    public int CurrentEdgeIndex { get; private set; } = -1;
-    public long ElapsedTime { get; private set; }
-    public bool IsComplete => CurrentEdgeIndex >= Route.PathEdges.Count - 1;
+    public readonly DijkstraRouteResult Route;
+    public int CurrentEdgeIndex;
+    public long ElapsedTime;
 
+    public bool IsComplete()
+    {
+        return CurrentEdgeIndex >= Route.PathEdges.Count - 1;
+    }
     public PacketSimulation(DijkstraRouteResult route)
     {
         Route = route;
+        CurrentEdgeIndex = -1;
+        ElapsedTime = 0;
     }
-
     public PacketTickResult Tick()
     {
-        if (IsComplete)
-            return PacketTickResult.Completed(ElapsedTime);
-
+        if (IsComplete()) return PacketTickResult.Completed(ElapsedTime);
         CurrentEdgeIndex++;
-
-        if (CurrentEdgeIndex >= Route.PathEdges.Count)
-            return PacketTickResult.Completed(ElapsedTime);
+        if (CurrentEdgeIndex >= Route.PathEdges.Count) return PacketTickResult.Completed(ElapsedTime);
 
         NetworkEdge edge = Route.PathEdges[CurrentEdgeIndex];
         ElapsedTime += edge.Weight;

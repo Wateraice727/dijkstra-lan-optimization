@@ -1,5 +1,3 @@
-using System.Drawing;
-
 namespace dlo_winform;
 
 public static class SampleGraphs
@@ -20,10 +18,41 @@ public static class SampleGraphs
         "MeshWeb 76",
         "Lattice 88"
     };
+    private static void NormalizeCoordinates(GraphData data)
+    {
+        if (data.nodeList.Count == 0) return;
 
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minY = float.MaxValue, maxY = float.MinValue;
+        foreach (NetworkNode node in data.nodeList)
+        {
+            if (node.Position.X < minX) minX = node.Position.X;
+            if (node.Position.X > maxX) maxX = node.Position.X;
+            if (node.Position.Y < minY) minY = node.Position.Y;
+            if (node.Position.Y > maxY) maxY = node.Position.Y;
+        }
+        float w = maxX - minX;
+        float h = maxY - minY;
+        if (w == 0f) w = 1f;
+        if (h == 0f) h = 1f;
+        float targetW = 480f;
+        float targetH = 260f;
+        float scale = targetW / w < targetH / h ? targetW / w : targetH / h;
+        if (scale > 1.2f) scale = 1.2f;
+        float cx = (minX + maxX) / 2f;
+        float cy = (minY + maxY) / 2f;
+        float targetCx = 270f;
+        float targetCy = 150f;
+        foreach (NetworkNode node in data.nodeList)
+        {
+            float nx = (node.Position.X - cx) * scale + targetCx;
+            float ny = (node.Position.Y - cy) * scale + targetCy;
+            node.Position = new PointF(nx, ny);
+        }
+    }
     public static GraphData CreateAt(int index)
     {
-        return index switch
+        GraphData data = index switch
         {
             0 => EmptyGraph(),
             1 => Linear5(),
@@ -40,6 +69,8 @@ public static class SampleGraphs
             12 => Lattice88(),
             _ => EmptyGraph()
         };
+        NormalizeCoordinates(data);
+        return data;
     }
 
     public static int NextIndex(int current) => (current + 1) % Names.Count;
@@ -64,10 +95,10 @@ public static class SampleGraphs
 
     private static GraphData Build(PointF[] positions, (int from, int to, int weight)[] edges)
     {
-        var data = new GraphData();
+        GraphData data = new GraphData();
         for (int i = 0; i < positions.Length; i++)
             data.nodeList.Add(new NetworkNode { Id = i + 1, Position = positions[i], Radius = 10 });
-        foreach (var e in edges)
+        foreach ((int from, int to, int weight) e in edges)
             data.edgeList.Add(new NetworkEdge
             {
                 StartNode = data.nodeList[e.from],

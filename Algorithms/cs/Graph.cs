@@ -15,9 +15,11 @@ namespace Graph
         private int vertex;
         public List<Edge>[] adjList;
         private int[] trace;
+        private MinHeap myHeap;
         public EdgeGraph(int _vertex = 0)
         {
             vertex = _vertex;
+            myHeap = new MinHeap(1000000);
             adjList = new List<Edge>[vertex + 1];
             trace = new int[vertex + 1];
             for (int i = 0; i <= vertex; i++) adjList[i] = new List<Edge>();
@@ -74,7 +76,6 @@ namespace Graph
             long[] distance = new long[vertex + 1];
             for (int i = 0; i < distance.Length; i++) distance[i] = INF;
             distance[start] = 0;
-            MinHeap myHeap = new MinHeap();
             myHeap.Enqueue(start, distance[start]);
             while (!myHeap.IsEmpty())
             {
@@ -117,7 +118,7 @@ namespace Graph
         {
             List<FullEdge> edgeList = new List<FullEdge>();
             DSU dsu = new DSU(vertex);
-            HashTable ht = new HashTable();
+            MyHashTable ht = new MyHashTable();
             int count = 0;
             Random rand = new Random();
             if (edge >= vertex - 1) 

@@ -1,30 +1,30 @@
-using System.Drawing;
-using System.Linq;
+using FastHashTable;
 
 namespace dlo_winform;
 
 public static class GraphEditor
 {
-    private static readonly Random _rng = new();
+    private static readonly Random _rng = new Random();
 
     public static void AddEdgeIfMissing(GraphData data, NetworkNode startNode, NetworkNode endNode, int weight)
     {
         if (startNode == null || endNode == null || startNode == endNode) return;
 
-        bool exists = data.edgeList.Any(edge =>
-            (edge.StartNode == startNode && edge.EndNode == endNode) ||
-            (edge.StartNode == endNode && edge.EndNode == startNode));
+        bool exists = false;
 
-        if (!exists)
+        foreach (NetworkEdge edge in data.edgeList) if ((edge.StartNode == startNode && edge.EndNode == endNode) || (edge.StartNode == endNode && edge.EndNode == startNode))
         {
-            data.edgeList.Add(new NetworkEdge
-            {
-                StartNode = startNode,
-                EndNode = endNode,
-                Weight = weight,
-                TransferSpeedBytesPerSecond = GenerateTransferSpeed()
-            });
+            exists = true;
+            break;
         }
+
+        if (!exists) data.edgeList.Add(new NetworkEdge
+        {
+            StartNode = startNode,
+            EndNode = endNode,
+            Weight = weight,
+            TransferSpeedBytesPerSecond = GenerateTransferSpeed()
+        });
     }
 
     public static ToggleEdgeOutcome ToggleEdge(GraphData data, NetworkNode nodeA, NetworkNode nodeB)
@@ -36,9 +36,12 @@ public static class GraphEditor
     {
         if (nodeA == null || nodeB == null || nodeA == nodeB) return ToggleEdgeOutcome.NoAction;
 
-        var edge = data.edgeList.FirstOrDefault(e =>
-            (e.StartNode == nodeA && e.EndNode == nodeB) ||
-            (e.StartNode == nodeB && e.EndNode == nodeA));
+        NetworkEdge edge = null;
+        foreach (NetworkEdge e in data.edgeList) if ((e.StartNode == nodeA && e.EndNode == nodeB) || (e.StartNode == nodeB && e.EndNode == nodeA))
+        {
+            edge = e;
+            break;
+        }
 
         if (edge != null)
         {
@@ -50,9 +53,9 @@ public static class GraphEditor
         return ToggleEdgeOutcome.Created;
     }
 
-    public static NetworkEdge? TryGetEdgeNearPoint(GraphData data, PointF point, float tolerance)
+    public static NetworkEdge TryGetEdgeNearPoint(GraphData data, PointF point, float tolerance)
     {
-        foreach (var edge in data.edgeList)
+        foreach (NetworkEdge edge in data.edgeList)
         {
             float dist = GeometryHelpers.DistanceToSegment(point, edge.StartNode.Position, edge.EndNode.Position);
             if (dist < tolerance)
@@ -63,7 +66,7 @@ public static class GraphEditor
 
     public static bool CanPlaceNode(GraphData data, PointF position, int radius)
     {
-        foreach (var node in data.nodeList)
+        foreach (NetworkNode node in data.nodeList)
         {
             if (GeometryHelpers.CirclesOverlap(position, radius, node.Position, node.Radius))
                 return false;
@@ -73,24 +76,30 @@ public static class GraphEditor
 
     public static NetworkNode AddNode(GraphData data, PointF position)
     {
+        MyHashTable usedIds = new MyHashTable();
+        foreach (NetworkNode n in data.nodeList) usedIds.Add(n.Id);
         int id = 1;
-        var usedIds = new HashSet<int>(data.nodeList.Select(n => n.Id));
-        while (usedIds.Contains(id)) id++;
-        var node = new NetworkNode { Id = id, Position = position };
+        while (!usedIds.Add(id)) id++;
+        NetworkNode node = new NetworkNode { Id = id, Position = position };
         data.nodeList.Add(node);
         return node;
     }
 
     public static (bool nodeRemoved, int removedEdgeCount, List<NetworkEdge> removedEdges) RemoveNode(GraphData data, PointF position)
     {
-        var node = data.GetNode(Point.Round(position));
+        NetworkNode node = data.GetNode(Point.Round(position));
         if (node == null) return (false, 0, new List<NetworkEdge>());
 
-        var removedEdges = data.edgeList
-            .Where(e => e.StartNode == node || e.EndNode == node)
-            .ToList();
-        foreach (var edge in removedEdges)
-            data.edgeList.Remove(edge);
+        List<NetworkEdge> removedEdges = new List<NetworkEdge>();
+        for (int i = data.edgeList.Count - 1; i >= 0; i--)
+        {
+            NetworkEdge edge = data.edgeList[i];
+            if (edge.StartNode == node || edge.EndNode == node)
+            {
+                removedEdges.Add(edge);
+                data.edgeList.RemoveAt(i);
+            }
+        }
 
         data.nodeList.Remove(node);
         return (true, removedEdges.Count, removedEdges);
@@ -101,20 +110,21 @@ public static class GraphEditor
         long[] bases = { 12_500_000L, 37_500_000L, 125_000_000L, 1_250_000_000L };
         long baseSpeed = bases[_rng.Next(bases.Length)];
         double factor = 0.5 + _rng.NextDouble();
-        return Math.Max(1_000_000L, (long)(baseSpeed * factor));
+        long speed = (long)(baseSpeed * factor);
+        return speed > 1_000_000L ? speed : 1_000_000L;
     }
 
     public static long PacketSizeBytes(int value, PacketUnit unit)
     {
         if (value <= 0) return 0;
-        return unit switch
+        switch (unit)
         {
-            PacketUnit.Bytes => value,
-            PacketUnit.KB => value * 1024L,
-            PacketUnit.MB => value * 1024L * 1024,
-            PacketUnit.GB => value * 1024L * 1024 * 1024,
-            _ => value
-        };
+            case PacketUnit.Bytes: return value;
+            case PacketUnit.KB: return value * 1024L;
+            case PacketUnit.MB: return value * 1024L * 1024L;
+            case PacketUnit.GB: return value * 1024L * 1024L * 1024L;
+            default: return value;
+        }
     }
 
     public static int ComputeEdgeWeightMs(long packetBytes, long speedBytesPerSec)
@@ -126,7 +136,7 @@ public static class GraphEditor
 
     public static void RecalculateEdgeWeights(GraphData data, long packetBytes)
     {
-        foreach (var edge in data.edgeList)
+        foreach (NetworkEdge edge in data.edgeList)
         {
             edge.Weight = ComputeEdgeWeightMs(packetBytes, edge.TransferSpeedBytesPerSecond);
         }

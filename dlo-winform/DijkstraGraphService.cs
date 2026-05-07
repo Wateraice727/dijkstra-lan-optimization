@@ -1,6 +1,5 @@
+using FastHashTable;
 using Graph;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace dlo_winform;
 
@@ -18,66 +17,53 @@ public static class DijkstraGraphService
 {
     public static DijkstraRouteResult FindRoute(GraphData data, int startNodeId, int endNodeId)
     {
-        if (data.nodeList.Count == 0 || data.edgeList.Count == 0)
+        if (data.nodeList.Count == 0 || data.edgeList.Count == 0) return new DijkstraRouteResult
         {
-            return new DijkstraRouteResult
-            {
-                StartNodeId = startNodeId,
-                DestinationNodeId = endNodeId
-            };
-        }
-
-        var startNode = data.GetNodeById(startNodeId);
-        var endNode = data.GetNodeById(endNodeId);
-        if (startNode == null || endNode == null)
-        {
-            return new DijkstraRouteResult
-            {
-                StartNodeId = startNodeId,
-                DestinationNodeId = endNodeId
-            };
-        }
-
+            StartNodeId = startNodeId,
+            DestinationNodeId = endNodeId
+        };
         int maxId = 0;
-        foreach (var node in data.nodeList)
-            if (node.Id > maxId) maxId = node.Id;
+        NetworkNode startNode = data.GetNodeById(startNodeId);
+        NetworkNode endNode = data.GetNodeById(endNodeId);
+        if (startNode == null || endNode == null) return new DijkstraRouteResult
+        {
+            StartNodeId = startNodeId,
+            DestinationNodeId = endNodeId
+        };
+        foreach (NetworkNode node in data.nodeList) if (node.Id > maxId) maxId = node.Id;
 
-        var graph = new EdgeGraph(maxId);
+        EdgeGraph graph = new EdgeGraph(maxId);
+        MyDictionary map = new MyDictionary();
 
-        foreach (var edge in data.edgeList)
+        foreach (NetworkEdge edge in data.edgeList)
         {
             if (edge.Weight < 0) continue;
-            graph.AddEdge(edge.StartNode.Id, edge.EndNode.Id, edge.Weight);
+            int u = edge.StartNode.Id, v = edge.EndNode.Id;
+            graph.AddEdge(u, v, edge.Weight);
+            long key = 1L * (u < v ? u : v) * (maxId + 1) + (u > v ? u : v);
+            NetworkEdge refEdge = edge;
+            map.Add(key, ref refEdge);
         }
 
-        var distances = graph.Dijkstra(startNodeId);
+        long[] distances = graph.SparseDijkstra(startNodeId);
 
-        if (distances[endNodeId] >= graph.Infinity)
+        if (distances[endNodeId] >= graph.Infinity) return new DijkstraRouteResult
         {
-            return new DijkstraRouteResult
-            {
-                StartNodeId = startNodeId,
-                DestinationNodeId = endNodeId,
-                Reachable = false
-            };
-        }
+            StartNodeId = startNodeId,
+            DestinationNodeId = endNodeId,
+            Reachable = false
+        };
 
-        var pathIds = graph.tracePath(startNodeId, endNodeId);
+        List<int> pathIds = graph.TracePath(startNodeId, endNodeId);
+        int capacity = pathIds.Count > 0 ? pathIds.Count - 1 : 0;
+        List<NetworkEdge> pathEdges = new List<NetworkEdge>(capacity);
 
-        var pathEdges = new List<NetworkEdge>();
-        for (int i = 0; i < pathIds.Count - 1; i++)
+        for (int i = 0; i < capacity; i++)
         {
-            int fromId = pathIds[i];
-            int toId = pathIds[i + 1];
-            foreach (var edge in data.edgeList)
-            {
-                if ((edge.StartNode.Id == fromId && edge.EndNode.Id == toId) ||
-                    (edge.StartNode.Id == toId && edge.EndNode.Id == fromId))
-                {
-                    pathEdges.Add(edge);
-                    break;
-                }
-            }
+            int u = pathIds[i], v = pathIds[i + 1];
+            long key = 1L * (u < v ? u : v) * (maxId + 1) + (u > v ? u : v);
+            NetworkEdge edge = null;
+            if (!map.Add(key, ref edge)) pathEdges.Add(edge);
         }
 
         return new DijkstraRouteResult
