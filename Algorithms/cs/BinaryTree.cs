@@ -1,12 +1,12 @@
 ﻿namespace Tree
-{
-    public struct Node
-    {
-        public int vertex;
-        public long weight;
-    } 
+{ 
     public struct MinHeap
     {
+        private struct Node
+        {
+            public int vertex;
+            public long weight;
+        }
         private Node[] heap;
         private int size;
         public MinHeap(int capacity = 1000000)

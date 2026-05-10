@@ -2,7 +2,7 @@
 {
     public class MyHashTable
     {
-        const int MOD = 1000367;
+        const int MOD = 4999999;
         const long MAXVAL = 1000000000000000000L;
         const long XOR = 727727727727727727L;
         const int MAXNODE = 2000000;
@@ -53,7 +53,7 @@
     }
     public class MyDictionary
     {
-        const int MOD = 1000367;
+        const int MOD = 4999999;
         const long MAXVAL = 1000000000000000000L;
         const long XOR = 727727727727727727L;
         const int MAXNODE = 2000000;

@@ -49,12 +49,13 @@ public sealed class PacketSimulation
     public PacketTickResult Tick()
     {
         if (IsComplete()) return PacketTickResult.Completed(ElapsedTime);
-        CurrentEdgeIndex++;
-        if (CurrentEdgeIndex >= Route.PathEdges.Count) return PacketTickResult.Completed(ElapsedTime);
+        if (++CurrentEdgeIndex >= Route.PathEdges.Count) return PacketTickResult.Completed(ElapsedTime);
 
         NetworkEdge edge = Route.PathEdges[CurrentEdgeIndex];
         ElapsedTime += edge.Weight;
 
-        return PacketTickResult.Moved(edge.StartNode.Id, edge.EndNode.Id, edge.Weight, ElapsedTime);
+        int actualFromId = Route.PathNodeIds[CurrentEdgeIndex], actualToId = Route.PathNodeIds[CurrentEdgeIndex + 1];
+
+        return PacketTickResult.Moved(actualFromId, actualToId, edge.Weight, ElapsedTime);
     }
 }

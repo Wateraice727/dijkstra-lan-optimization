@@ -116,31 +116,25 @@ namespace Graph
         }
         public void RandomGenerate(int edge, bool isDirected = false)
         {
-            List<FullEdge> edgeList = new List<FullEdge>();
+            FullEdge[] edgeList = new FullEdge[edge];
             DSU dsu = new DSU(vertex);
             MyHashTable ht = new MyHashTable();
             int count = 0;
             Random rand = new Random();
-            if (edge >= vertex - 1) 
-            {   while (count < vertex - 1)
+            if (edge >= vertex - 1) while (count < vertex - 1)
+            {
+                int u = rand.Next(1, vertex + 1), v = rand.Next(1, vertex + 1);
+                if (u != v && dsu.UnionSet(u, v))
                 {
-                    int u = rand.Next(1, vertex + 1), v = rand.Next(1, vertex + 1);
-                    if (u != v && dsu.UnionSet(u, v))
+                    long w = rand.Next(1, 1025);
+                    FullEdge e = new FullEdge()
                     {
-                        long w = rand.Next(1, 1025);
-                        FullEdge e = new FullEdge()
-                        {
-                            from = u,
-                            to = v,
-                            weight = w
-                        };
-                        edgeList.Add(e);
-                        count++;
-                    }
-                }
-                foreach (FullEdge e in edgeList)
-                {
-                    long key = 1L * Math.Min(e.from, e.to) * (vertex + 1) + Math.Max(e.from, e.to);
+                        from = u,
+                        to = v,
+                        weight = w
+                    };
+                    edgeList[count++] = e;
+                    long key = 1L * (e.from < e.to ? e.from : e.to) * (vertex + 1) + (e.from > e.to ? e.from : e.to);
                     ht.Add(key);
                 }
             }
@@ -150,7 +144,7 @@ namespace Graph
             {
                 int u = rand.Next(1, vertex + 1), v = rand.Next(1, vertex + 1);
                 if (u == v) continue;
-                long key = 1L * Math.Min(u, v) * (vertex + 1) + Math.Max(u, v);
+                long key = 1L * (u < v ? u : v) * (vertex + 1) + (u > v ? u : v);
                 if (ht.Add(key))
                 {
                     long w = rand.Next(1, 1024);
@@ -160,10 +154,12 @@ namespace Graph
                         to = v,
                         weight = w
                     };
-                    edgeList.Add(e);
-                    count++;
+                    edgeList[count++] = e;
                 }
             }
+            foreach (FullEdge e in edgeList) AddEdge(e.from, e.to, e.weight, isDirected);
+
+            //Debug
             //foreach (FullEdge e in edgeList)
             //{
             //    Console.Write(e.from);
@@ -173,7 +169,6 @@ namespace Graph
             //    Console.Write(e.weight);
             //    Console.Write("\n");
             //}
-            foreach (FullEdge e in edgeList) AddEdge(e.from, e.to, e.weight, isDirected);
         }
     }
 }

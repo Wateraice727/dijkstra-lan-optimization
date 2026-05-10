@@ -343,25 +343,19 @@ public static class SampleGraphs
     {
         GraphData data = new GraphData();
         Random rng = new Random();
+
+        EdgeGraph logicGraph = new EdgeGraph(nodeCount);
+        logicGraph.RandomGenerate(edgeCount, false);
+
         float cx = canvasWidth / 2f;
         float cy = canvasHeight / 2f;
         float radiusX = canvasWidth * 0.45f;
         float radiusY = canvasHeight * 0.45f;
+
         for (int i = 1; i <= nodeCount; i++)
         {
-            float x, y;
-            if (nodeCount <= 100)
-            {
-                double angle = 2 * Math.PI * i / nodeCount;
-                x = (float)(cx + radiusX * Math.Cos(angle));
-                y = (float)(cy + radiusY * Math.Sin(angle));
-            }
-            else
-            {
-                x = rng.Next((int)(cx - radiusX), (int)(cx + radiusX));
-                y = rng.Next((int)(cy - radiusY), (int)(cy + radiusY));
-            }
-
+            float x = rng.Next((int)(cx - radiusX), (int)(cx + radiusX));
+            float y = rng.Next((int)(cy - radiusY), (int)(cy + radiusY));
             data.nodeList.Add(new NetworkNode
             {
                 Id = i,
@@ -369,31 +363,13 @@ public static class SampleGraphs
                 Radius = nodeCount > 1000 ? 1 : 10
             });
         }
-
-        MyHashTable ht = new FastHashTable.MyHashTable();
-        int count = 0;
-        long nPlus1 = (long)nodeCount + 1;
-        for (int i = 0; i < nodeCount - 1 && count < edgeCount; i++)
-        {
-            AddWeightedEdge(data, i, i + 1, rng);
-            ht.Add(1L * i * nPlus1 + (i + 1));
-            count++;
-        }
-        while (count < edgeCount)
-        {
-            int u = rng.Next(0, nodeCount);
-            int v = rng.Next(0, nodeCount);
-            if (u == v) continue;
-            int min = u < v ? u : v;
-            int max = u > v ? u : v;
-
-            long key = 1L * min * nPlus1 + max;
-            if (ht.Add(key))
+        for (int u = 1; u <= nodeCount; u++)
+            foreach (var edge in logicGraph.adjList[u]) if (u < edge.to) data.edgeList.Add(new NetworkEdge
             {
-                AddWeightedEdge(data, min, max, rng);
-                count++;
-            }
-        }
+                StartNode = data.nodeList[u - 1],
+                EndNode = data.nodeList[edge.to - 1],
+                Weight = (int)edge.weight
+            });
 
         return data;
     }
